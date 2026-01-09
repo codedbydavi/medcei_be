@@ -1,0 +1,8 @@
+# Arquivos e pastas a serem ignorados pelo Git
+serviceAccountKey.json
+.env
+.env.*
+
+node_modules/
+__pycache__/
+venv/
