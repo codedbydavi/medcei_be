@@ -1,10 +1,9 @@
 #simulation_engine.py
 
 def run_sir(current_state, params):
-    # Garantia de Tipos (Cast)
-    S = float(current_state['s_initial'])
-    I = float(current_state['i_initial'])
-    R = float(current_state.get('r_initial', 0))
+    S = float(current_state.get('S', current_state.get('s_initial')))
+    I = float(current_state.get('I', current_state.get('i_initial')))
+    R = float(current_state.get('R', current_state.get('r_initial', 0)))
     day = int(current_state['day'])
 
     N = float(params['population'])

@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity, set_access_cookies, set_refresh_cookies, set_refresh_cookies
+from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity, set_access_cookies, set_refresh_cookies, set_refresh_cookies, unset_jwt_cookies
 from hooks.user_hook import current_user, current_user_role
 from models import User, db
 from firebase_admin import auth as firebase_auth
@@ -22,14 +22,14 @@ def register():
         last_name = data.get('last_name', '')
 
         if User.query.filter_by(firebase_uid=firebase_uid).first() or User.query.filter_by(email=email).first():
-            return jsonify({"error": "User already exists"}), 400
+            return jsonify({"error": "Utilizador já existe"}), 400
 
         new_user = User(firebase_uid=firebase_uid, email=email, first_name=first_name, last_name=last_name)
         db.session.add(new_user)
         db.session.commit()
 
         return jsonify({
-            "message": "User registered successfully",
+            "message": "Utilizador registado com sucesso",
         }), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -46,7 +46,10 @@ def login():
 
         user = User.query.filter_by(firebase_uid=firebase_uid).first()
         if not user:
-            return jsonify({"error": "User not found"}), 404
+            return jsonify({"error": "Utilizador não encontrado"}), 404
+        
+        if user.user_status.id != 1:
+            return jsonify({"error": "Utilizador não está ativo"}), 403
 
         access_token = create_access_token(identity=user.id, additional_claims={"role": user.user_type.name})
         refresh_token = create_refresh_token(identity=user.id, additional_claims={"role": user.user_type.name})
@@ -69,4 +72,10 @@ def refresh():
     access_token = create_access_token(identity=identity, additional_claims={"role": role})
     response = jsonify({"msg": "Novo token de acesso gerado"})
     set_access_cookies(response, access_token)
+    return response, 200
+
+@auth_bp.route("/logout", methods=['POST'])
+def logout():
+    response = jsonify({"msg": "Logout realizado com sucesso"})
+    unset_jwt_cookies(response)
     return response, 200
