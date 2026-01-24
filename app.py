@@ -6,6 +6,8 @@ from flask_jwt_extended import JWTManager
 from routes.auth import auth_bp
 from routes.simulate import simulate_bp
 from routes.stats import stats_bp
+from routes.user import user_bp
+from routes.history import history_bp
 from models import db
 import firebase_admin
 from firebase_admin import credentials
@@ -24,11 +26,25 @@ app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(minutes=15)
 app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(days=30)
 
 # Configurações de Cookies e Segurança
-app.config["JWT_TOKEN_LOCATION"] = ["headers", "cookies"]
+app.config["JWT_TOKEN_LOCATION"] = ["cookies", "headers"]
 app.config["JWT_COOKIE_CSRF_PROTECT"] = False 
-app.config["JWT_COOKIE_SAMESITE"] = "Lax"
 
-CORS(app, supports_credentials=True, resources={r"/*": {"origins": "http://localhost:3000"}})
+# Mude para False enquanto estiver em desenvolvimento (HTTP)
+# Mude para True apenas em produção (HTTPS)
+app.config["JWT_COOKIE_SECURE"] = False 
+
+# Com Lax e Secure=False, o Chrome aceita cookies entre portas do localhost
+app.config["JWT_COOKIE_SAMESITE"] = "Lax"
+app.config["JWT_ACCESS_COOKIE_NAME"] = "access_token_cookie"
+app.config["JWT_REFRESH_COOKIE_NAME"] = "refresh_token_cookie"
+
+CORS(app, 
+     resources={r"/*": {"origins": "http://localhost:3000"}},
+     supports_credentials=True,
+     allow_headers=["Content-Type", "Authorization", "X-CSRF-TOKEN"],
+     expose_headers=["Set-Cookie"]
+)
+
 db.init_app(app)
 jwt = JWTManager(app)
 
@@ -41,9 +57,11 @@ if not firebase_admin._apps:
 app.register_blueprint(auth_bp, url_prefix='/auth')
 app.register_blueprint(simulate_bp, url_prefix='/simulation')
 app.register_blueprint(stats_bp, url_prefix='/stats')
+app.register_blueprint(user_bp, url_prefix='/user')
+app.register_blueprint(history_bp, url_prefix='/history')
  
 with app.app_context():
     db.create_all()
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5001, debug=True)

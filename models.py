@@ -50,6 +50,7 @@ class User(db.Model):
 
     def to_json(self):
         return {
+            "id": self.id,
             "first_name": self.first_name,
             "last_name": self.last_name,
             "fullName": f"{self.first_name} {self.last_name}",
@@ -102,9 +103,30 @@ class Simulation(db.Model):
     duration_days = db.Column(db.Integer, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    user = db.relationship('User', backref='simulations')
+    user = db.relationship('User', backref=db.backref('simulations', cascade="all, delete-orphan"))
     status = db.relationship('SimulationStatus')
     model = db.relationship('EpidemiologicalModel')
+
+    parameters = db.relationship(
+        'SimulationParameter', 
+        backref='simulation', 
+        cascade="all, delete-orphan"
+    )
+    summary_results = db.relationship(
+        'SimulationSummaryResult', 
+        backref='simulation', 
+        cascade="all, delete-orphan"
+    )
+    time_series = db.relationship(
+        'SimulationTimeSeries', 
+        backref='simulation', 
+        cascade="all, delete-orphan"
+    )
+    logs = db.relationship(
+        'SystemLog', 
+        backref='simulation', 
+        cascade="all, delete-orphan"
+    )
 
 class SimulationParameter(db.Model):
     __tablename__ = 'simulation_parameters'
@@ -124,7 +146,6 @@ class SimulationParameter(db.Model):
     param_key = db.Column(db.String(100), nullable=False)
     param_value = db.Column(db.Float)
 
-    simulation = db.relationship('Simulation', backref='parameters')
 
 class SimulationSummaryResult(db.Model):
     __tablename__ = 'simulation_summary_results'
@@ -144,7 +165,6 @@ class SimulationSummaryResult(db.Model):
     result_key = db.Column(db.String(100), nullable=False)
     result_value = db.Column(db.Float)
 
-    simulation = db.relationship('Simulation', backref='summary_results')
 
 class SimulationTimeSeries(db.Model):
     __tablename__ = 'simulation_time_series'
@@ -161,8 +181,6 @@ class SimulationTimeSeries(db.Model):
     infected_count = db.Column(db.Integer, nullable=False)
     recovered_count = db.Column(db.Integer, nullable=False)
     dead_count = db.Column(db.Integer, nullable=False, default=0)
-
-    simulation = db.relationship('Simulation', backref='time_series')
 
     def to_json(self):
         return {
@@ -196,6 +214,3 @@ class SystemLog(db.Model):
         db.String(36),
         db.ForeignKey('simulations.id')
     )
-
-    user = db.relationship('User', backref='logs')
-    simulation = db.relationship('Simulation', backref='logs')

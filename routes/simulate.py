@@ -26,7 +26,7 @@ def start_simulation():
     beta = data.get('beta')
     gamma = data.get('gamma')
     mu = data.get('mu')
-    duration_days = data.get('duration_days', 100)
+    duration_days = data.get('duration_days', 365)
     
     parameters = {
         "population": n_total,
@@ -39,8 +39,8 @@ def start_simulation():
         "duration_days" :duration_days
     }
 
-    if duration_days > 110:
-        return jsonify({"msg": "Limite máximo de 100 dias atingido"}), 400
+    if duration_days > 365:
+        return jsonify({"msg": "Limite máximo de 365 dias atingido"}), 400
     
     running_status = SimulationStatus.query.filter_by(name='RUNNING').first()
     if not running_status:
@@ -72,31 +72,44 @@ def start_simulation():
 @jwt_required()
 def run_simulation_chunk(sim_id):
     sim = Simulation.query.get_or_404(sim_id)
-
     batch_size = request.json.get('batch_size', 10)
 
-    # 1. Verificação de Status (Early Return)
+    limit_days = int(sim.duration_days)
+
+    # Verificação de Status (Early Return)
     if sim.status and sim.status.name in ["PAUSED", "FINISHED"]:
         return jsonify({
             "msg": f"Simulação está {sim.status.name}",
             "status": sim.status.name
         }), 200
 
-    # 2. Preparação de Parâmetros
+    # Preparação de Parâmetros
     last_point = SimulationTimeSeries.query.filter_by(simulation_id=sim.id).order_by(SimulationTimeSeries.time_step.desc()).first()
     # Recupa os paramêtros
     params = {p.param_key: p.param_value for p in sim.parameters}
-    model_name = sim.model.name
+    model_name = str(sim.model.name).strip()
 
     if not last_point:
-        current_state = {
-            'day': -1, 
-            'S': float(params['s_initial']),
-            'I': float(params['i_initial']),
-            'R': float(params.get('r_initial', 0)),
-            'D': float(params.get('d_initial', 0))
-        }
-    else:
+        exists_day_zero = SimulationTimeSeries.query.filter_by(
+            simulation_id=sim.id, 
+            time_step=0
+        ).first()
+        
+        if exists_day_zero:
+            last_point = exists_day_zero
+        else:
+            current_state = {
+                'day': -1, 
+                'S': float(params['s_initial']),
+                'I': float(params['i_initial']),
+                'R': float(params.get('r_initial', 0)),
+                'D': float(params.get('d_initial', 0))
+            }
+
+    if last_point:
+        if last_point.time_step >= limit_days - 1:
+            return jsonify({"msg": "Simulação já concluída", "finished": True}), 200
+
         current_state = {
             'day': last_point.time_step,
             'S': last_point.susceptible_count,
@@ -128,7 +141,7 @@ def run_simulation_chunk(sim_id):
         current_state = next_step
 
         is_last_day = (next_step['day'] + 1) >= limit_days
-        is_eradicated = next_step['I'] < 0.5 # Se não houver mais comtaminação
+        is_eradicated = next_step['I'] < 0.5
 
         if is_last_day or is_eradicated:
             simulation_finished = True
@@ -182,8 +195,8 @@ def run_simulation_chunk(sim_id):
                 
             # Métricas Epidemiológicas
             SimulationSummaryResult(simulation_id=sim.id, result_key='epidemic_duration', result_value=final_day),
-            SimulationSummaryResult(simulation_id=sim.id, result_key='attack_rate', result_value=round(attack_rate_val, 2)),      # Ex: 50.40 (%)
-            SimulationSummaryResult(simulation_id=sim.id, result_key='peak_prevalence', result_value=round(peak_prevalence_val, 2)) # Ex: 12.50 (%)
+            SimulationSummaryResult(simulation_id=sim.id, result_key='attack_rate', result_value=round(attack_rate_val, 2)),
+            SimulationSummaryResult(simulation_id=sim.id, result_key='peak_prevalence', result_value=round(peak_prevalence_val, 2))
             ]
             
         db.session.add_all(results_to_save)
@@ -195,8 +208,6 @@ def run_simulation_chunk(sim_id):
         "new_data": [p.to_json() for p in new_points_buffer],
         "finished": simulation_finished
     })
-
-
 
 @simulate_bp.route("/pause/<int:sim_id>", methods=["POST"])
 @jwt_required()
